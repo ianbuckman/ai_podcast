@@ -30,17 +30,8 @@ def save_config(config):
 def cmd_list(args):
     config = load_config()
     channels = config.get("channels", [])
-    if not channels:
-        print("No channels configured.")
-        return
-    print(f"{'Name':<35} {'Category':<18} {'Handle':<20} {'Channel ID'}")
-    print("-" * 100)
-    for ch in channels:
-        name = ch.get("name", "?")
-        cat = ch.get("category", "general")
-        handle = ch.get("handle", "-")
-        cid = ch.get("channel_id", "?")
-        print(f"{name:<35} {cat:<18} {handle:<20} {cid}")
+    print(json.dumps(channels, ensure_ascii=False, indent=2))
+    print(f"{len(channels)} channel(s) configured", file=sys.stderr)
 
 
 def cmd_add(args):
@@ -86,13 +77,17 @@ def cmd_remove(args):
         if name_query not in ch.get("name", "").lower()
     ]
 
-    removed = original_len - len(config["channels"])
-    if removed == 0:
-        print(f"No channel matching \"{args.name}\" found.", file=sys.stderr)
+    removed_channels = [
+        ch for ch in channels
+        if name_query in ch.get("name", "").lower()
+    ]
+    if not removed_channels:
+        print(json.dumps({"error": f"No channel matching \"{args.name}\" found."}))
         sys.exit(1)
 
     save_config(config)
-    print(f"Removed {removed} channel(s) matching \"{args.name}\".", file=sys.stderr)
+    print(json.dumps(removed_channels, ensure_ascii=False, indent=2))
+    print(f"Removed {len(removed_channels)} channel(s) matching \"{args.name}\".", file=sys.stderr)
 
 
 def main():

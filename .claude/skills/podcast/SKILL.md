@@ -139,20 +139,7 @@ cd /Users/nqt/ai_podcast && python3 scripts/state.py mark VIDEO_ID --title "TITL
 
 ## 频道管理
 
-如果用户想添加、删除或查看频道，使用以下命令：
-
-```bash
-# 查看所有频道
-cd /Users/nqt/ai_podcast && python3 scripts/manage_channels.py list
-
-# 添加频道（只需频道名或 @handle，channel_id 自动解析）
-cd /Users/nqt/ai_podcast && python3 scripts/manage_channels.py add "频道名或@handle" --category CATEGORY
-
-# 删除频道
-cd /Users/nqt/ai_podcast && python3 scripts/manage_channels.py remove "频道名"
-```
-
-可用的 category 值：ai-interviews, ml-deep-dive, ai-vc, ai-explainer, ai-engineering, ai-news, general
+如果用户想添加、删除或查看频道，告诉他们使用 `/channels` skill。
 
 ## 错误处理
 

@@ -1,23 +1,19 @@
 channels:
-  - name: Lex Fridman Podcast
-    channel_id: UCSHZKyawb77ixDdsGog4iWA
-    category: ai-interviews
-
-  - name: No Priors
-    channel_id: UCSI7h9hydQ40K5MJHnCrQvw
-    category: ai-vc
-
-  - name: Y Combinator
-    channel_id: UCxIJaCMEptJjxmmQgGFsnCg
-    handle: "@ycombinator"
-    category: general
-
-  - name: Lenny's Podcast
-    channel_id: UC6t1O76G0jYXOAoYCm153dA
-    handle: "@LennysPodcast"
-    category: general
-
-  - name: Last Week in AI
-    channel_id: UCKARTq-t5SPMzwtft8FWwnA
-    handle: "@lastweekinai"
-    category: ai-news
+- name: Lex Fridman Podcast
+  channel_id: UCSHZKyawb77ixDdsGog4iWA
+  category: ai-interviews
+- name: No Priors
+  channel_id: UCSI7h9hydQ40K5MJHnCrQvw
+  category: ai-vc
+- name: Y Combinator
+  channel_id: UCxIJaCMEptJjxmmQgGFsnCg
+  handle: '@ycombinator'
+  category: general
+- name: Lenny's Podcast
+  channel_id: UC6t1O76G0jYXOAoYCm153dA
+  handle: '@LennysPodcast'
+  category: general
+- name: Last Week in AI
+  channel_id: UCKARTq-t5SPMzwtft8FWwnA
+  handle: '@lastweekinai'
+  category: ai-news

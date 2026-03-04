@@ -66,6 +66,73 @@ def cmd_add(args):
     print(f"Added \"{name}\" ({category})", file=sys.stderr)
 
 
+def cmd_sync(args):
+    txt_path = PROJECT_ROOT / "config" / "channels.txt"
+    if not txt_path.exists():
+        print(json.dumps({"error": "config/channels.txt not found"}))
+        sys.exit(1)
+
+    # Parse txt: ignore empty lines and comments
+    with open(txt_path, "r") as f:
+        txt_entries = []
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                txt_entries.append(line)
+
+    config = load_config()
+    existing = config.get("channels", [])
+
+    # Build lookup: lowercase name/handle -> channel entry
+    existing_by_key = {}
+    for ch in existing:
+        existing_by_key[ch["name"].lower()] = ch
+        if ch.get("handle"):
+            existing_by_key[ch["handle"].lower()] = ch
+
+    added = []
+    kept = []
+    matched_ids = set()
+
+    for entry in txt_entries:
+        key = entry.lower()
+        if key in existing_by_key:
+            ch = existing_by_key[key]
+            kept.append(ch)
+            matched_ids.add(ch["channel_id"])
+        else:
+            # New channel - resolve it
+            print(f"Resolving \"{entry}\"...", file=sys.stderr)
+            result = resolve(entry)
+            if result is None:
+                print(f"WARNING: Could not resolve \"{entry}\", skipping.", file=sys.stderr)
+                continue
+            # Check if resolved channel_id already matched (duplicate entry with different casing)
+            if result["channel_id"] in matched_ids:
+                continue
+            new_ch = {
+                "name": result.get("name") or entry,
+                "channel_id": result["channel_id"],
+                "category": "general",
+            }
+            if result.get("handle"):
+                new_ch["handle"] = result["handle"]
+            added.append(new_ch)
+            matched_ids.add(result["channel_id"])
+
+    # Removed = existing channels whose channel_id wasn't matched
+    removed = [ch for ch in existing if ch["channel_id"] not in matched_ids]
+
+    # Build new channel list preserving order from txt
+    new_channels = kept + added
+    config["channels"] = new_channels
+    save_config(config)
+
+    result = {"added": added, "removed": removed, "kept": len(kept), "total": len(new_channels)}
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(f"Sync done: +{len(added)} added, -{len(removed)} removed, {len(kept)} kept", file=sys.stderr)
+
+
 def cmd_remove(args):
     name_query = args.name.lower()
     config = load_config()
@@ -104,8 +171,10 @@ def main():
     p_rm = sub.add_parser("remove", help="Remove a channel by name")
     p_rm.add_argument("name", help="Channel name (partial match)")
 
+    sub.add_parser("sync", help="Sync channels from config/channels.txt to YAML")
+
     args = parser.parse_args()
-    {"list": cmd_list, "add": cmd_add, "remove": cmd_remove}[args.command](args)
+    {"list": cmd_list, "add": cmd_add, "remove": cmd_remove, "sync": cmd_sync}[args.command](args)
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ argument-hint: [--days N]
 运行以下命令发现新的、未处理的播客集：
 
 ```bash
-cd /Users/nqt/ai_podcast && python3 scripts/fetch_episodes.py $ARGUMENTS
+python3 scripts/fetch_episodes.py $ARGUMENTS
 ```
 
 解析 JSON 输出。如果数组为空，告诉用户："没有发现新的播客集，所有频道都已是最新的。" 然后停止。
@@ -36,7 +36,7 @@ cd /Users/nqt/ai_podcast && python3 scripts/fetch_episodes.py $ARGUMENTS
 对每个选中的集，获取字幕：
 
 ```bash
-cd /Users/nqt/ai_podcast && python3 scripts/get_transcript.py VIDEO_ID
+python3 scripts/get_transcript.py VIDEO_ID
 ```
 
 如果字幕出错（transcripts_disabled, video_unavailable, no_usable_transcript）：
@@ -134,7 +134,7 @@ CREATE TABLE (
 每集成功推送到 Notion 后，**立即**标记为已处理：
 
 ```bash
-cd /Users/nqt/ai_podcast && python3 scripts/state.py mark VIDEO_ID --title "TITLE" --channel "CHANNEL" --notion-page-id "PAGE_ID"
+python3 scripts/state.py mark VIDEO_ID --title "TITLE" --channel "CHANNEL" --notion-page-id "PAGE_ID"
 ```
 
 这确保如果过程中断，已完成的集不会被重新分析。
@@ -150,7 +150,7 @@ cd /Users/nqt/ai_podcast && python3 scripts/state.py mark VIDEO_ID --title "TITL
 
 ## 错误处理
 
-- 如果依赖未安装，先运行：`pip3 install -r /Users/nqt/ai_podcast/requirements.txt`
+- 如果依赖未安装，先运行：`pip3 install -r requirements.txt`
 - 单集失败时记录错误并继续下一集，不要中止整个批次
 - YouTube 限流 (HTTP 429)：等 30 秒重试一次，失败则跳过
 - Notion 推送失败：重试一次，仍失败则将分析保存到 `data/fallback/` 目录下的 markdown 文件

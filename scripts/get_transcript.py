@@ -74,7 +74,8 @@ def fetch_transcript(video_id: str) -> dict:
                     "is_translated": False,
                     "error": f"non_english_untranslated:{transcript.language_code}",
                 }
-        except Exception:
+        except Exception as e:
+            print(f"WARNING: Failed to fetch transcript ({transcript.language_code}): {e}", file=sys.stderr)
             continue
 
     return {"error": "no_usable_transcript", "snippets": None}
@@ -125,9 +126,14 @@ def chunk_transcript(snippets: list) -> list:
 
 
 def main():
+    import re
     parser = argparse.ArgumentParser(description="Get YouTube video transcript")
     parser.add_argument("video_id", help="YouTube video ID")
     args = parser.parse_args()
+
+    if not re.match(r"^[a-zA-Z0-9_-]{11}$", args.video_id):
+        print(json.dumps({"error": f"Invalid video ID format: {args.video_id}"}))
+        sys.exit(1)
 
     result = fetch_transcript(args.video_id)
 

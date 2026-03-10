@@ -4,9 +4,10 @@
 import sys
 import json
 import re
-import urllib.request
 import urllib.parse
 from typing import Optional
+
+from utils import CHANNEL_ID_PATTERN, fetch_url
 
 
 def resolve_handle(handle: str) -> Optional[dict]:
@@ -34,13 +35,11 @@ def _extract_from_url(url: str) -> Optional[dict]:
                        "Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
     }
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
-    except Exception as e:
-        print(f"ERROR: Failed to fetch {url}: {e}", file=sys.stderr)
+    data, err = fetch_url(url, headers=headers)
+    if err:
+        print(f"ERROR: Failed to fetch {url}: {err}", file=sys.stderr)
         return None
+    html = data.decode("utf-8", errors="replace")
 
     # Extract channel_id
     cid_match = re.search(r'"(?:channelId|externalId)"\s*:\s*"(UC[a-zA-Z0-9_-]{22})"', html)
@@ -85,7 +84,7 @@ def resolve(query: str) -> Optional[dict]:
     query = query.strip()
 
     # Already a channel_id
-    if re.match(r"^UC[a-zA-Z0-9_-]{22}$", query):
+    if CHANNEL_ID_PATTERN.match(query):
         return {"channel_id": query, "name": None, "handle": None}
 
     # YouTube URL

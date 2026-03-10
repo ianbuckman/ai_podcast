@@ -7,11 +7,9 @@ from pathlib import Path
 
 import yaml
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from utils import PROJECT_ROOT, VALID_CATEGORIES
 CONFIG_PATH = PROJECT_ROOT / "config" / "channels.yaml"
 
-# Import resolve from sibling module
-sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from resolve_channel import resolve
 
 
@@ -37,6 +35,11 @@ def cmd_list(args):
 def cmd_add(args):
     query = args.query
     category = args.category
+
+    if category not in VALID_CATEGORIES:
+        print(f"ERROR: Invalid category \"{category}\". Valid: {', '.join(sorted(VALID_CATEGORIES))}",
+              file=sys.stderr)
+        sys.exit(1)
 
     print(f"Resolving \"{query}\"...", file=sys.stderr)
     result = resolve(query)
@@ -134,27 +137,38 @@ def cmd_sync(args):
 
 
 def cmd_remove(args):
-    name_query = args.name.lower()
+    name_query = args.name.strip().lower()
     config = load_config()
     channels = config.get("channels", [])
-    original_len = len(channels)
 
-    config["channels"] = [
+    # Try exact match first (name, handle, or channel_id)
+    exact = [
         ch for ch in channels
-        if name_query not in ch.get("name", "").lower()
+        if name_query == ch.get("name", "").lower()
+        or name_query == ch.get("handle", "").lower()
+        or name_query == ch.get("channel_id", "").lower()
     ]
 
-    removed_channels = [
-        ch for ch in channels
-        if name_query in ch.get("name", "").lower()
-    ]
-    if not removed_channels:
-        print(json.dumps({"error": f"No channel matching \"{args.name}\" found."}))
+    if not exact:
+        # Show partial matches as candidates, but do NOT auto-delete
+        partial = [
+            ch for ch in channels
+            if name_query in ch.get("name", "").lower()
+            or name_query in ch.get("handle", "").lower()
+        ]
+        if partial:
+            print(json.dumps({
+                "error": f"No exact match for \"{args.name}\". Did you mean one of these?",
+                "candidates": [ch.get("name") for ch in partial],
+            }, ensure_ascii=False))
+        else:
+            print(json.dumps({"error": f"No channel matching \"{args.name}\" found."}))
         sys.exit(1)
 
+    config["channels"] = [ch for ch in channels if ch not in exact]
     save_config(config)
-    print(json.dumps(removed_channels, ensure_ascii=False, indent=2))
-    print(f"Removed {len(removed_channels)} channel(s) matching \"{args.name}\".", file=sys.stderr)
+    print(json.dumps(exact, ensure_ascii=False, indent=2))
+    print(f"Removed {len(exact)} channel(s): {', '.join(ch['name'] for ch in exact)}.", file=sys.stderr)
 
 
 def main():
@@ -169,7 +183,7 @@ def main():
     p_add.add_argument("--category", default="general", help="Category tag (default: general)")
 
     p_rm = sub.add_parser("remove", help="Remove a channel by name")
-    p_rm.add_argument("name", help="Channel name (partial match)")
+    p_rm.add_argument("name", help="Channel name, @handle, or channel_id (exact match)")
 
     sub.add_parser("sync", help="Sync channels from config/channels.txt to YAML")
 

@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Manage processed episode state."""
 
+import fcntl
 import json
 import sys
 import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 
-STATE_PATH = Path(__file__).resolve().parent.parent / "data" / "processed.json"
+from utils import PROJECT_ROOT
+
+STATE_PATH = PROJECT_ROOT / "data" / "processed.json"
+
+DEFAULT_STATE = {"processed_ids": [], "episodes": {}, "last_check": None}
 
 
 def _ensure_data_dir():
@@ -16,15 +21,27 @@ def _ensure_data_dir():
 
 def load_state() -> dict:
     if not STATE_PATH.exists():
-        return {"processed_ids": [], "episodes": {}, "last_check": None}
-    with open(STATE_PATH, "r") as f:
-        return json.load(f)
+        return dict(DEFAULT_STATE)
+    try:
+        with open(STATE_PATH, "r") as f:
+            data = json.load(f)
+        # Basic schema validation
+        if not isinstance(data, dict) or "processed_ids" not in data:
+            print("WARNING: State file has unexpected format, resetting.", file=sys.stderr)
+            return dict(DEFAULT_STATE)
+        return data
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"WARNING: State file corrupted ({e}), resetting to default.", file=sys.stderr)
+        return dict(DEFAULT_STATE)
 
 
 def save_state(state: dict):
     _ensure_data_dir()
-    with open(STATE_PATH, "w") as f:
+    tmp_path = STATE_PATH.with_suffix(".json.tmp")
+    with open(tmp_path, "w") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         json.dump(state, f, indent=2, ensure_ascii=False)
+    tmp_path.rename(STATE_PATH)  # atomic on same filesystem
 
 
 def mark_processed(video_id: str, title: str = "", channel: str = "",

@@ -3,7 +3,7 @@ name: podcast
 description: 监控 YouTube AI/科技播客频道，获取新集字幕，分析提取洞察，推送到 Notion。当用户想查看最新播客摘要时使用。
 user-invocable: true
 disable-model-invocation: true
-allowed-tools: Bash, Read, mcp__claude_ai_Notion__notion-search, mcp__claude_ai_Notion__notion-fetch, mcp__claude_ai_Notion__notion-create-pages, mcp__claude_ai_Notion__notion-update-page, mcp__claude_ai_Notion__notion-create-database
+allowed-tools: Bash, Read, mcp__Notion__notion-search, mcp__Notion__notion-fetch, mcp__Notion__notion-create-pages, mcp__Notion__notion-update-page, mcp__Notion__notion-create-database
 argument-hint: [--days N]
 ---
 
@@ -93,6 +93,10 @@ CREATE TABLE (
 ```
 
 记住创建后的 data_source_id，后续创建页面时使用。
+
+### 验证数据库 Schema
+
+找到数据库后，用 notion-fetch 获取数据库详情，确认以下属性存在：Episode Title, Channel, Published Date, Category, YouTube URL, Episode Duration, Analysis Date, Status, Rating。如果有属性缺失，警告用户并列出缺失项，而不是静默创建不完整的页面。
 
 ### 创建 Episode 页面
 

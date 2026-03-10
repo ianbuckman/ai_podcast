@@ -3,17 +3,17 @@
 
 import sys
 import json
-import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+from utils import PROJECT_ROOT, DESCRIPTION_LIMIT, fetch_url
 
 RSS_URL_TEMPLATE = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
 ATOM_NS = "http://www.w3.org/2005/Atom"
 YT_NS = "http://www.youtube.com/xml/schemas/2015"
 MEDIA_NS = "http://search.yahoo.com/mrss/"
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = PROJECT_ROOT / "config" / "channels.yaml"
 STATE_PATH = PROJECT_ROOT / "data" / "processed.json"
 
@@ -35,15 +35,16 @@ def load_processed(state_path: Path) -> set:
 
 def fetch_feed(channel_id: str) -> list:
     url = RSS_URL_TEMPLATE.format(channel_id)
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            xml_data = resp.read()
-    except Exception as e:
-        print(f"WARNING: Failed to fetch feed for {channel_id}: {e}", file=sys.stderr)
+    xml_data, err = fetch_url(url)
+    if err:
+        print(f"WARNING: Failed to fetch feed for {channel_id}: {err}", file=sys.stderr)
         return []
 
-    root = ET.fromstring(xml_data)
+    try:
+        root = ET.fromstring(xml_data)
+    except ET.ParseError as e:
+        print(f"WARNING: Failed to parse feed for {channel_id}: {e}", file=sys.stderr)
+        return []
     channel_name = root.findtext(f"{{{ATOM_NS}}}title", default="Unknown")
     episodes = []
 
@@ -74,7 +75,7 @@ def fetch_feed(channel_id: str) -> list:
             "channel_id": channel_id,
             "published": published,
             "url": link,
-            "description": description[:500],
+            "description": description[:DESCRIPTION_LIMIT],
             "views": views,
         })
 
@@ -91,6 +92,10 @@ def main():
     parser.add_argument("--all", action="store_true",
                         help="Include already-processed episodes")
     args = parser.parse_args()
+
+    if args.days <= 0:
+        print("ERROR: --days must be a positive integer.", file=sys.stderr)
+        sys.exit(1)
 
     if args.since:
         cutoff = datetime.fromisoformat(args.since).replace(tzinfo=timezone.utc)

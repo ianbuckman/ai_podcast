@@ -74,9 +74,19 @@ python3 scripts/get_transcript.py VIDEO_ID
 
 ## Step 4: 推送到 Notion
 
-### 首次运行：创建数据库
+### 获取数据库
 
-首次运行（或找不到已有数据库）时，先搜索 Notion 中是否有 "AI Podcast Insights" 数据库。如果没有，用 notion-create-database 工具创建：
+先读取本地配置获取已保存的数据库 ID：
+
+```bash
+python3 scripts/state.py get-db
+```
+
+**情况 A：配置中有 database_id** → 直接使用该 ID，跳到"验证数据库 Schema"。
+
+**情况 B：配置为空（`{}`）** → 搜索 Notion 中是否有 "AI Podcast Insights" 数据库：
+- 如果找到，保存其 ID 到本地配置：`python3 scripts/state.py set-db "DATABASE_ID"`
+- 如果没找到，用 notion-create-database 工具创建：
 
 ```sql
 CREATE TABLE (
@@ -88,15 +98,16 @@ CREATE TABLE (
     "Episode Duration" RICH_TEXT,
     "Analysis Date" DATE,
     "Status" STATUS,
-    "Rating" SELECT('Must Listen':red, 'Highly Recommended':orange, 'Worth Watching':yellow, 'Informational':green, 'Skip':gray)
+    "Rating" SELECT('Must Listen':red, 'Highly Recommended':orange, 'Worth Watching':yellow, 'Informational':green, 'Skip':gray),
+    "阅读状态" SELECT('未读':gray, '已读':green, '没用':red, '待深入':blue)
 )
 ```
 
-记住创建后的 data_source_id，后续创建页面时使用。
+创建后，保存数据库 ID：`python3 scripts/state.py set-db "DATABASE_ID"`
 
 ### 验证数据库 Schema
 
-找到数据库后，用 notion-fetch 获取数据库详情，确认以下属性存在：Episode Title, Channel, Published Date, Category, YouTube URL, Episode Duration, Analysis Date, Status, Rating。如果有属性缺失，警告用户并列出缺失项，而不是静默创建不完整的页面。
+找到数据库后，用 notion-fetch 获取数据库详情，确认以下属性存在：Episode Title, Channel, Published Date, Category, YouTube URL, Episode Duration, Analysis Date, Status, Rating, 阅读状态。如果有属性缺失，警告用户并列出缺失项，而不是静默创建不完整的页面。
 
 ### 创建 Episode 页面
 
@@ -112,6 +123,7 @@ CREATE TABLE (
 - Analysis Date: 今天的日期
 - Status: "Done"
 - Rating: 根据分析内容评估的推荐等级
+- 阅读状态: "未读"（默认值，用户后续在 Notion 中手动更新）
 
 **页面正文内容（Notion Markdown，中文）：**
 

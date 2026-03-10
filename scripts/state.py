@@ -11,6 +11,7 @@ from pathlib import Path
 from utils import PROJECT_ROOT
 
 STATE_PATH = PROJECT_ROOT / "data" / "processed.json"
+NOTION_CONFIG_PATH = PROJECT_ROOT / "data" / "notion_config.json"
 
 DEFAULT_STATE = {"processed_ids": [], "episodes": {}, "last_check": None}
 
@@ -78,6 +79,10 @@ def main():
     sub.add_parser("check-time", help="Update last check timestamp")
     sub.add_parser("show", help="Show current state summary")
 
+    set_db = sub.add_parser("set-db", help="Save Notion database ID")
+    set_db.add_argument("database_id")
+    sub.add_parser("get-db", help="Get saved Notion database ID")
+
     args = parser.parse_args()
 
     if args.command == "mark":
@@ -95,6 +100,17 @@ def main():
             "recent_5": list(state["episodes"].items())[-5:],
         }
         print(json.dumps(summary, indent=2, ensure_ascii=False))
+    elif args.command == "set-db":
+        _ensure_data_dir()
+        with open(NOTION_CONFIG_PATH, "w") as f:
+            json.dump({"database_id": args.database_id}, f, indent=2)
+        print(f"Saved Notion database ID: {args.database_id}", file=sys.stderr)
+    elif args.command == "get-db":
+        if NOTION_CONFIG_PATH.exists():
+            with open(NOTION_CONFIG_PATH, "r") as f:
+                print(f.read().strip())
+        else:
+            print("{}")
     else:
         parser.print_help()
 

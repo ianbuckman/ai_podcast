@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """Manage processed episode state."""
 
+import fcntl
 import json
 import sys
 import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 
-STATE_PATH = Path(__file__).resolve().parent.parent / "data" / "processed.json"
+from utils import PROJECT_ROOT
+
+STATE_PATH = PROJECT_ROOT / "data" / "processed.json"
+NOTION_CONFIG_PATH = PROJECT_ROOT / "data" / "notion_config.json"
+
+DEFAULT_STATE = {"processed_ids": [], "episodes": {}, "last_check": None}
 
 
 def _ensure_data_dir():
@@ -16,15 +22,27 @@ def _ensure_data_dir():
 
 def load_state() -> dict:
     if not STATE_PATH.exists():
-        return {"processed_ids": [], "episodes": {}, "last_check": None}
-    with open(STATE_PATH, "r") as f:
-        return json.load(f)
+        return dict(DEFAULT_STATE)
+    try:
+        with open(STATE_PATH, "r") as f:
+            data = json.load(f)
+        # Basic schema validation
+        if not isinstance(data, dict) or "processed_ids" not in data:
+            print("WARNING: State file has unexpected format, resetting.", file=sys.stderr)
+            return dict(DEFAULT_STATE)
+        return data
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"WARNING: State file corrupted ({e}), resetting to default.", file=sys.stderr)
+        return dict(DEFAULT_STATE)
 
 
 def save_state(state: dict):
     _ensure_data_dir()
-    with open(STATE_PATH, "w") as f:
+    tmp_path = STATE_PATH.with_suffix(".json.tmp")
+    with open(tmp_path, "w") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
         json.dump(state, f, indent=2, ensure_ascii=False)
+    tmp_path.rename(STATE_PATH)  # atomic on same filesystem
 
 
 def mark_processed(video_id: str, title: str = "", channel: str = "",
@@ -61,6 +79,10 @@ def main():
     sub.add_parser("check-time", help="Update last check timestamp")
     sub.add_parser("show", help="Show current state summary")
 
+    set_db = sub.add_parser("set-db", help="Save Notion database ID")
+    set_db.add_argument("database_id")
+    sub.add_parser("get-db", help="Get saved Notion database ID")
+
     args = parser.parse_args()
 
     if args.command == "mark":
@@ -78,6 +100,17 @@ def main():
             "recent_5": list(state["episodes"].items())[-5:],
         }
         print(json.dumps(summary, indent=2, ensure_ascii=False))
+    elif args.command == "set-db":
+        _ensure_data_dir()
+        with open(NOTION_CONFIG_PATH, "w") as f:
+            json.dump({"database_id": args.database_id}, f, indent=2)
+        print(f"Saved Notion database ID: {args.database_id}", file=sys.stderr)
+    elif args.command == "get-db":
+        if NOTION_CONFIG_PATH.exists():
+            with open(NOTION_CONFIG_PATH, "r") as f:
+                print(f.read().strip())
+        else:
+            print("{}")
     else:
         parser.print_help()
 

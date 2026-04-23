@@ -17,3 +17,27 @@ channels:
   channel_id: UCKARTq-t5SPMzwtft8FWwnA
   handle: '@lastweekinai'
   category: ai-news
+- name: Dwarkesh Patel
+  channel_id: UCZa18YV7qayTh-MRIrBhDpA
+  category: ai-interviews
+  handle: '@DwarkeshPatel'
+- name: Acquired
+  channel_id: UCyFqFYfTW2VoIQKylJ04Rtw
+  category: general
+  handle: '@AcquiredFM'
+- name: Bg2 Pod
+  channel_id: UC-yRDvpR99LUc5l7i7jLzew
+  category: ai-vc
+  handle: '@Bg2Pod'
+- name: Cognitive Revolution
+  channel_id: UCoPTBQlwUm0m7gSbBW9wN6A
+  category: ai-explainer
+  handle: '@CognitiveRevolutionPodcast'
+- name: a16z
+  channel_id: UCQ1VQj-37kl2yS_VUhfQHsw
+  category: ai-vc
+  handle: '@a16z'
+- name: Latent Space
+  channel_id: UCxBcwypKK-W3GHd_RZ9FZrQ
+  category: ai-engineering
+  handle: '@LatentSpacePod'

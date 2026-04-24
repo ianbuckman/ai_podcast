@@ -6,7 +6,7 @@ channels:
   channel_id: UCSI7h9hydQ40K5MJHnCrQvw
   category: ai-vc
 - name: Y Combinator
-  channel_id: UCxIJaCMEptJjxmmQgGFsnCg
+  channel_id: UCcefcZRL2oaA_uBNeo5UOWg
   handle: '@ycombinator'
   category: general
 - name: Lenny's Podcast
@@ -18,7 +18,7 @@ channels:
   handle: '@lastweekinai'
   category: ai-news
 - name: Dwarkesh Patel
-  channel_id: UCZa18YV7qayTh-MRIrBhDpA
+  channel_id: UCXl4i9dYBrFOabk0xGmbkRA
   category: ai-interviews
   handle: '@DwarkeshPatel'
 - name: Acquired
@@ -30,14 +30,42 @@ channels:
   category: ai-vc
   handle: '@Bg2Pod'
 - name: Cognitive Revolution
-  channel_id: UCoPTBQlwUm0m7gSbBW9wN6A
+  channel_id: UCjNRVMBVI30Sak_p6HRWhIA
   category: ai-explainer
   handle: '@CognitiveRevolutionPodcast'
 - name: a16z
-  channel_id: UCQ1VQj-37kl2yS_VUhfQHsw
+  channel_id: UC9cn0TuPq4dnbTY-CBsm8XA
   category: ai-vc
   handle: '@a16z'
 - name: Latent Space
   channel_id: UCxBcwypKK-W3GHd_RZ9FZrQ
   category: ai-engineering
   handle: '@LatentSpacePod'
+- name: AI Daily Brief
+  channel_id: UCKelCK4ZaO6HeEI1KQjqzWA
+  category: ai-news
+  handle: '@AIDailyBrief'
+- name: All-In Podcast
+  channel_id: UCESLZhusAkFfsNsApnjF_Cg
+  category: ai-vc
+  handle: '@allin'
+- name: 20VC
+  channel_id: UCf0PBRjhf0rF8fWBIxTuoWA
+  category: ai-vc
+  handle: '@20VC'
+- name: Hard Fork
+  channel_id: UCZcR2SVWaGWNlMqPxvQS3vw
+  category: ai-news
+  handle: '@hardfork'
+- name: Moment of Zen
+  channel_id: UCY0OE_54Viqx_qtXuh-85VA
+  category: ai-vc
+  handle: '@MomentofZenPodcast'
+- name: The Logan Bartlett Show
+  channel_id: UCugS0jD5IAdoqzjaNYzns7w
+  category: ai-vc
+  handle: '@theloganbartlettshow'
+- name: Machine Learning Street Talk
+  channel_id: UCMLtBahI5DMrt0NPvDSoIRQ
+  category: ai-explainer
+  handle: '@MachineLearningStreetTalk'

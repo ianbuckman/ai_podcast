@@ -43,17 +43,21 @@ def save_state(state: dict):
 
 
 def mark_processed(video_id: str, title: str = "", channel: str = "",
-                   notion_page_id: str = ""):
+                   notion_page_id: str = "", lark_doc_url: str = ""):
     with _state_lock():
         state = load_state()
         if video_id not in state["processed_ids"]:
             state["processed_ids"].append(video_id)
-        state["episodes"][video_id] = {
+        entry = {
             "title": title,
             "channel": channel,
-            "notion_page_id": notion_page_id,
             "processed_at": datetime.now(timezone.utc).isoformat(),
         }
+        if notion_page_id:
+            entry["notion_page_id"] = notion_page_id
+        if lark_doc_url:
+            entry["lark_doc_url"] = lark_doc_url
+        state["episodes"][video_id] = entry
         state["last_check"] = datetime.now(timezone.utc).isoformat()
         save_state(state)
 
@@ -74,6 +78,7 @@ def main():
     mark.add_argument("--title", default="")
     mark.add_argument("--channel", default="")
     mark.add_argument("--notion-page-id", default="")
+    mark.add_argument("--lark-doc-url", default="")
 
     sub.add_parser("check-time", help="Update last check timestamp")
     sub.add_parser("show", help="Show current state summary")
@@ -82,7 +87,8 @@ def main():
 
     if args.command == "mark":
         mark_processed(args.video_id, args.title, args.channel,
-                       getattr(args, "notion_page_id", ""))
+                       getattr(args, "notion_page_id", ""),
+                       getattr(args, "lark_doc_url", ""))
         print(f"Marked {args.video_id} as processed", file=sys.stderr)
     elif args.command == "check-time":
         update_last_check()

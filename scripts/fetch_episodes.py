@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Fetch new podcast episodes from YouTube RSS feeds."""
 
+from __future__ import annotations
+
 import sys
 import json
 import time

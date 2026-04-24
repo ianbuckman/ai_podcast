@@ -75,19 +75,21 @@ python3 scripts/fetch_episodes.py <剥掉 --notion 的参数>
 
 ### 子任务 prompt 模板
 
-Prompt 模板文件:
+Prompt 模板文件(路径相对仓库根):
 
 ```
-/Users/nqt/conductor/workspaces/ai_podcast/dublin/.claude/skills/podcast/subagent_prompt.md
+.claude/skills/podcast/subagent_prompt.md
 ```
 
 **使用步骤**:
 
-1. Read 模板文件(本轮 /podcast 只需 Read 一次,之后所有集复用同一份文本)。
-2. 对每集做占位符替换:
+1. 本轮 /podcast 开始时跑一次 `pwd` 拿到仓库绝对路径,记作 `REPO_ROOT`(后续占位符替换用)。
+2. Read 模板文件(本轮 /podcast 只需 Read 一次,之后所有集复用同一份文本)。
+3. 对每集做占位符替换:
 
    | 占位符 | 来源 |
    |---|---|
+   | `{{repo_root}}` | Step 1 拿到的 `REPO_ROOT`(所有集共用) |
    | `{{video_id}}` | fetch_episodes 输出的 `video_id` |
    | `{{title}}` | `title` |
    | `{{channel}}` | `channel_name` |
@@ -95,8 +97,8 @@ Prompt 模板文件:
    | `{{category}}` | `category` |
    | `{{url}}` | `url` |
 
-3. 替换时整串替换即可(标题里的引号/冒号/破折号不需要转义)。
-4. 把替换完的文本作为 `prompt` 传给 Agent 工具(`subagent_type="general-purpose"`)。
+4. 替换时整串替换即可(标题里的引号/冒号/破折号不需要转义)。
+5. 把替换完的文本作为 `prompt` 传给 Agent 工具(`subagent_type="general-purpose"`)。
 
 ### 子任务返回契约
 

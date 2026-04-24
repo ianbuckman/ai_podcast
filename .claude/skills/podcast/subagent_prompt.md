@@ -13,7 +13,7 @@
 
 # 工作目录
 
-/Users/nqt/conductor/workspaces/ai_podcast/dublin
+{{repo_root}}
 
 # 步骤
 
@@ -39,7 +39,7 @@
    - 有没有新的概念压缩框架 / 类比?
    - 听完后读者对 X 的判断会改变吗(先验更新)?
 
-3. **按五维打分(每维 0-3)**。完整 rubric 见 SKILL.md 的"信号强度五维"表(先 Read `/Users/nqt/conductor/workspaces/ai_podcast/dublin/.claude/skills/podcast/SKILL.md`)。
+3. **按五维打分(每维 0-3)**。完整 rubric 见 SKILL.md 的"信号强度五维"表(先 Read `{{repo_root}}/.claude/skills/podcast/SKILL.md`)。
 
    五维速查:
    - **Surprise**:读者的判断被更新了吗?

@@ -3,7 +3,9 @@
 
 import sys
 import json
+import time
 import urllib.request
+import urllib.error
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -33,12 +35,37 @@ def load_processed(state_path: Path) -> set:
     return set(data.get("processed_ids", []))
 
 
+def _fetch_with_retry(url: str, max_attempts: int = 4) -> bytes | None:
+    """Fetch URL with exponential backoff. YouTube RSS rate-limits aggressively
+    and returns 404/500 as throttle signal — retry with delay recovers."""
+    headers = {"User-Agent": "feedparser/6.0.11"}
+    for attempt in range(max_attempts):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as e:
+            if e.code in (404, 429, 500, 502, 503) and attempt < max_attempts - 1:
+                wait = (attempt + 1) * 8
+                print(f"  HTTP {e.code}, retrying in {wait}s (attempt {attempt + 2}/{max_attempts})",
+                      file=sys.stderr)
+                time.sleep(wait)
+                continue
+            raise
+        except Exception:
+            if attempt < max_attempts - 1:
+                time.sleep((attempt + 1) * 4)
+                continue
+            raise
+    return None
+
+
 def fetch_feed(channel_id: str) -> list:
     url = RSS_URL_TEMPLATE.format(channel_id)
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            xml_data = resp.read()
+        xml_data = _fetch_with_retry(url)
+        if xml_data is None:
+            return []
     except Exception as e:
         print(f"WARNING: Failed to fetch feed for {channel_id}: {e}", file=sys.stderr)
         return []
@@ -104,7 +131,9 @@ def main():
           file=sys.stderr)
 
     all_new = []
-    for ch in channels:
+    for idx, ch in enumerate(channels):
+        if idx > 0:
+            time.sleep(4)
         episodes = fetch_feed(ch["channel_id"])
         for ep in episodes:
             if ep["video_id"] in processed:

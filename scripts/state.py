@@ -3,15 +3,30 @@
 
 import json
 import sys
+import fcntl
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 STATE_PATH = Path(__file__).resolve().parent.parent / "data" / "processed.json"
+LOCK_PATH = Path(__file__).resolve().parent.parent / "data" / ".processed.lock"
 
 
 def _ensure_data_dir():
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+
+@contextmanager
+def _state_lock():
+    # Serialize concurrent mark/update calls (parallel subagents).
+    _ensure_data_dir()
+    with open(LOCK_PATH, "w") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def load_state() -> dict:
@@ -29,27 +44,29 @@ def save_state(state: dict):
 
 def mark_processed(video_id: str, title: str = "", channel: str = "",
                    notion_page_id: str = "", lark_doc_url: str = ""):
-    state = load_state()
-    if video_id not in state["processed_ids"]:
-        state["processed_ids"].append(video_id)
-    entry = {
-        "title": title,
-        "channel": channel,
-        "processed_at": datetime.now(timezone.utc).isoformat(),
-    }
-    if notion_page_id:
-        entry["notion_page_id"] = notion_page_id
-    if lark_doc_url:
-        entry["lark_doc_url"] = lark_doc_url
-    state["episodes"][video_id] = entry
-    state["last_check"] = datetime.now(timezone.utc).isoformat()
-    save_state(state)
+    with _state_lock():
+        state = load_state()
+        if video_id not in state["processed_ids"]:
+            state["processed_ids"].append(video_id)
+        entry = {
+            "title": title,
+            "channel": channel,
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if notion_page_id:
+            entry["notion_page_id"] = notion_page_id
+        if lark_doc_url:
+            entry["lark_doc_url"] = lark_doc_url
+        state["episodes"][video_id] = entry
+        state["last_check"] = datetime.now(timezone.utc).isoformat()
+        save_state(state)
 
 
 def update_last_check():
-    state = load_state()
-    state["last_check"] = datetime.now(timezone.utc).isoformat()
-    save_state(state)
+    with _state_lock():
+        state = load_state()
+        state["last_check"] = datetime.now(timezone.utc).isoformat()
+        save_state(state)
 
 
 def main():

@@ -3,7 +3,7 @@ name: podcast
 description: 监控 YouTube AI/科技播客频道,获取新集字幕,做信号强度评估后挑出当日最佳一集,生成深度解读 + 公众号长文 + 小红书拆条,默认推到飞书云文档(--notion 可切回 Notion)。当用户想做每日硅谷 AI 播客内容时使用。
 user-invocable: true
 disable-model-invocation: true
-allowed-tools: Bash, Read, mcp__claude_ai_Notion__notion-search, mcp__claude_ai_Notion__notion-fetch, mcp__claude_ai_Notion__notion-create-pages, mcp__claude_ai_Notion__notion-update-page, mcp__claude_ai_Notion__notion-create-database, mcp__claude_ai_Notion__notion-update-data-source
+allowed-tools: Bash, Read, Agent, mcp__claude_ai_Notion__notion-search, mcp__claude_ai_Notion__notion-fetch, mcp__claude_ai_Notion__notion-create-pages, mcp__claude_ai_Notion__notion-update-page, mcp__claude_ai_Notion__notion-create-database, mcp__claude_ai_Notion__notion-update-data-source
 argument-hint: [--days N] [--notion]
 ---
 
@@ -62,24 +62,61 @@ python3 scripts/fetch_episodes.py <剥掉 --notion 的参数>
 
 用户选 "none" → `python3 scripts/state.py check-time` 后停止。
 
-## Step 2:批量获取字幕
+## Step 2:并发分发评分子任务
 
-对所有选中集,逐个获取字幕:
+对选中的候选集**并发**分发给独立 subagent。每个 subagent 完成:拉字幕 → 扫读 → 按五维打分 → 返回紧凑评分卡。**不做**精华分析,**不碰**外部 sink —— 只出评分数据供主 agent 在 Step 3 选集用。
 
-```bash
-python3 scripts/get_transcript.py VIDEO_ID
+### 调度规则
+
+- **批大小**:每批最多 5 个 Agent,避免 YouTube 限流(HTTP 429)和过多 context 同时占用。
+- **并发方式**:同一批的 Agent 调用必须放在**单条 assistant 消息**里同时发出(多个 Agent tool use 在一个 message block 中),**不要**逐个调用。
+- **批间串行**:上一批全部返回后再发下一批。
+- **字幕持久化**:`get_transcript.py` 把 chunks 写到 `data/transcripts/{video_id}/chunk_*.txt`,Step 4 主 agent 直接 Read 该目录,subagent 不需回传字幕全文。
+
+### 子任务 prompt 模板
+
+Prompt 模板文件:
+
+```
+/Users/nqt/conductor/workspaces/ai_podcast/dublin/.claude/skills/podcast/subagent_prompt.md
 ```
 
-字幕错误(transcripts_disabled / video_unavailable / no_usable_transcript):
-- 告知"跳过 [标题]: [原因]"
-- `python3 scripts/state.py mark VIDEO_ID --title "TITLE" --channel "CHANNEL"` 标记已处理
-- 继续下一集
+**使用步骤**:
 
-字幕为自动翻译时提示一句,但继续处理。
+1. Read 模板文件(本轮 /podcast 只需 Read 一次,之后所有集复用同一份文本)。
+2. 对每集做占位符替换:
 
-## Step 3:信号强度速评 & 选集
+   | 占位符 | 来源 |
+   |---|---|
+   | `{{video_id}}` | fetch_episodes 输出的 `video_id` |
+   | `{{title}}` | `title` |
+   | `{{channel}}` | `channel_name` |
+   | `{{published}}` | `published` 的日期部分(YYYY-MM-DD) |
+   | `{{category}}` | `category` |
+   | `{{url}}` | `url` |
 
-对每集字幕(扫读,不精读),用五维给 0-3 分并算总分,对话中展示一张表:
+3. 替换时整串替换即可(标题里的引号/冒号/破折号不需要转义)。
+4. 把替换完的文本作为 `prompt` 传给 Agent 工具(`subagent_type="general-purpose"`)。
+
+### 子任务返回契约
+
+每个 subagent 返回固定结构:
+
+```
+video_id: <id>
+status: scored | skipped | failed
+scores: surprise=X asymmetric=X falsifiable=X tradeoff=X compression=X   (0-3 each)
+total: <0-15>
+one_line: <核心论点 + 最突出信号维度,如 "Anthropic CTO 首次披露 Opus 4 训练成本结构 [asymmetric]">
+note: <跳过原因 / 自动翻译字幕提示 / 失败摘要 / 空>
+```
+
+- **status=skipped**:字幕不可用(transcripts_disabled / video_unavailable / no_usable_transcript);subagent 已自行 `state.py mark` 标记,主 agent 汇总展示即可。
+- **status=failed**:异常(如 429 重试后仍失败);subagent 未 mark,主 agent 记入汇总表建议手动重跑。
+
+## Step 3:汇总评分 & 选集
+
+收齐所有批次的 subagent 返回后,按 total **降序**组装评分表(只含 status=scored 的集):
 
 ```
 | # | 标题(截短) | 频道 | Surprise | Asymmetric | Falsifiable | Tradeoff | Compression | 总分 | 一句话判断 |
@@ -87,7 +124,7 @@ python3 scripts/get_transcript.py VIDEO_ID
 | 1 | ... | ... | 3 | 2 | 2 | 1 | 2 | 10 | ... |
 ```
 
-"一句话判断"格式:**核心论点 + 最突出的信号维度**,如"Anthropic CTO 首次披露 Opus 4 训练成本结构 [asymmetric]"。
+表下单独列出 skipped / failed 集(video_id + note),让用户知道有哪些候选没进入评分。
 
 **选集逻辑**:
 - 若最高分集 ≥ 10 且显著领先第二名(差 ≥ 3):直接选 top 1,继续 Step 4

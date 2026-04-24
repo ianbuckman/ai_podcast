@@ -3,7 +3,7 @@ name: podcast
 description: 监控 YouTube AI/科技播客频道，获取新集字幕，分析提取洞察，推送到 Notion。当用户想查看最新播客摘要时使用。
 user-invocable: true
 disable-model-invocation: true
-allowed-tools: Bash, Read, mcp__claude_ai_Notion__notion-search, mcp__claude_ai_Notion__notion-fetch, mcp__claude_ai_Notion__notion-create-pages, mcp__claude_ai_Notion__notion-update-page, mcp__claude_ai_Notion__notion-create-database
+allowed-tools: Bash, Read, Agent, mcp__claude_ai_Notion__notion-search, mcp__claude_ai_Notion__notion-fetch, mcp__claude_ai_Notion__notion-create-pages, mcp__claude_ai_Notion__notion-update-page, mcp__claude_ai_Notion__notion-create-database
 argument-hint: [--days N]
 ---
 
@@ -31,24 +31,81 @@ python3 scripts/fetch_episodes.py $ARGUMENTS
 
 如果用户选择 "none"，运行 `python3 scripts/state.py check-time` 更新时间戳后停止。
 
-## Step 2: 获取字幕
+## Step 2: 准备 Notion 数据库
 
-对每个选中的集，获取字幕：
+并发分发前，先确保数据库存在并拿到 `data_source_id`，避免 N 个子任务重复创建。
 
-```bash
-python3 scripts/get_transcript.py VIDEO_ID
+搜索 Notion 中是否有 "AI Podcast Insights" 数据库。如果没有，用 notion-create-database 工具创建：
+
+```sql
+CREATE TABLE (
+    "Episode Title" TITLE,
+    "Channel" SELECT(),
+    "Published Date" DATE,
+    "Category" SELECT('ai-interviews':blue, 'ml-deep-dive':purple, 'industry':green, 'ai-vc':orange, 'ai-explainer':yellow, 'ai-engineering':pink, 'ai-news':red, 'general':gray),
+    "YouTube URL" URL,
+    "Episode Duration" RICH_TEXT,
+    "Analysis Date" DATE,
+    "Status" STATUS,
+    "Rating" SELECT('Must Listen':red, 'Highly Recommended':orange, 'Worth Watching':yellow, 'Informational':green, 'Skip':gray)
+)
 ```
 
-如果字幕出错（transcripts_disabled, video_unavailable, no_usable_transcript）：
-- 告知用户："跳过 [标题]: [原因]"
-- 运行 `python3 scripts/state.py mark VIDEO_ID --title "TITLE" --channel "CHANNEL"` 标记为已处理
-- 继续下一集
+记下 `data_source_id`，下一步要传给每个子任务。
 
-如果字幕是自动翻译的，提示："注意：[标题] 的字幕从 [语言] 自动翻译，分析质量可能有所影响。"
+## Step 3: 并发分发子任务
 
-## Step 3: 分析字幕
+把每个选中的集**并发**分发给独立 subagent 处理（端到端：取字幕 → 分析 → 推 Notion → mark 状态）。
 
-对每集字幕，阅读所有分块后综合分析。
+### 调度规则
+
+- **批大小**：每批最多 5 个 Agent，避免 YouTube 限流（HTTP 429）和 Notion API 拥塞。
+- **并发方式**：同一批的 Agent 调用必须放在**单条 assistant 消息**里同时发出（多个 Agent tool use 在一个 message block 中）。**不要**逐个调用。
+- **批间串行**：上一批全部返回后再发下一批。
+- **不需要 worktree 隔离**：子任务只读 transcript、写 Notion、append `processed.json`（已加文件锁），共用工作目录即可。
+
+### 子任务 prompt 模板
+
+Prompt 模板存在独立文件：
+
+```
+/Users/nqt/conductor/workspaces/ai_podcast/dublin/.claude/skills/podcast/subagent_prompt.md
+```
+
+**使用步骤**：
+
+1. Read 模板文件（本次 /podcast 流程里只需读一次，之后每个集复用同一份文本）。
+2. 对每集做占位符替换，生成该 Agent 调用的 prompt：
+
+   | 占位符 | 来源 |
+   |---|---|
+   | `{{video_id}}` | fetch_episodes 输出的 `video_id` |
+   | `{{title}}` | `title` |
+   | `{{channel}}` | `channel_name` |
+   | `{{published}}` | `published` 的日期部分（YYYY-MM-DD） |
+   | `{{category}}` | `category` |
+   | `{{url}}` | `url` |
+   | `{{data_source_id}}` | Step 2 拿到的 data_source_id（不含 `collection://` 前缀） |
+   | `{{analysis_date}}` | 今天（YYYY-MM-DD） |
+
+3. 替换时注意：标题里可能含引号、冒号、破折号——直接整串替换即可，不需要转义；不要把占位符拆成多段手写。
+4. 把替换完的完整文本作为 `prompt` 参数传给 Agent 工具（`subagent_type="general-purpose"`）。
+
+### 收集结果
+
+每个 Agent 返回后保存其 status / page_id / rating / note。失败的集**不要**自动重试——记录后继续，最后汇总展示让用户决定是否手动重跑。
+
+## Step 4: 汇总展示
+
+所有批次完成后，给用户一份汇总表：
+
+- ✅ 成功：N 集（列出标题 + Notion 页面链接）
+- ⏭️ 跳过：N 集（列出标题 + 原因）
+- ❌ 失败：N 集（列出标题 + 错误摘要，建议手动重跑命令）
+
+## 子任务参考：质量标准与分析框架
+
+> 此节供 Step 3 子任务读取。主 agent 不直接执行分析。
 
 ### 质量标准（每条内容必须满足至少一条）
 
@@ -110,31 +167,9 @@ python3 scripts/get_transcript.py VIDEO_ID
 3. 读完所有分块后再综合产出分析
 4. **不要**在每个分块后输出部分分析
 
-## Step 4: 推送到 Notion
+## 子任务参考：Notion 页面正文格式
 
-### 首次运行：创建数据库
-
-首次运行（或找不到已有数据库）时，先搜索 Notion 中是否有 "AI Podcast Insights" 数据库。如果没有，用 notion-create-database 工具创建：
-
-```sql
-CREATE TABLE (
-    "Episode Title" TITLE,
-    "Channel" SELECT(),
-    "Published Date" DATE,
-    "Category" SELECT('ai-interviews':blue, 'ml-deep-dive':purple, 'industry':green, 'ai-vc':orange, 'ai-explainer':yellow, 'ai-engineering':pink, 'ai-news':red, 'general':gray),
-    "YouTube URL" URL,
-    "Episode Duration" RICH_TEXT,
-    "Analysis Date" DATE,
-    "Status" STATUS,
-    "Rating" SELECT('Must Listen':red, 'Highly Recommended':orange, 'Worth Watching':yellow, 'Informational':green, 'Skip':gray)
-)
-```
-
-记住创建后的 data_source_id，后续创建页面时使用。
-
-### 创建 Episode 页面
-
-对每个分析完的集，在数据库中创建一个 Notion 页面：
+> 此节供 Step 3 子任务读取。主 agent 不直接创建页面。
 
 **属性：**
 - Episode Title: 集标题
@@ -172,22 +207,7 @@ CREATE TABLE (
 （2-3 条，每条必须标注 [嘉宾] 或 [推导]；整集无可行动之物则整段省略）
 ```
 
-## Step 5: 更新状态
-
-每集成功推送到 Notion 后，**立即**标记为已处理：
-
-```bash
-python3 scripts/state.py mark VIDEO_ID --title "TITLE" --channel "CHANNEL" --notion-page-id "PAGE_ID"
-```
-
-这确保如果过程中断，已完成的集不会被重新分析。
-
-全部完成后，展示摘要：
-- N 个集已分析
-- N 个集已跳过（无字幕）
-- 创建的 Notion 页面链接
-
-## Step 5.5: 跨集线索（仅当本批次分析 ≥ 3 集时执行）
+## Step 5: 跨集线索（仅当本批次分析 ≥ 3 集时执行）
 
 全部集处理完后，在**对话中**追加输出 1-3 条跨集观察，**不写入 Notion**。
 
@@ -206,7 +226,13 @@ python3 scripts/state.py mark VIDEO_ID --title "TITLE" --channel "CHANNEL" --not
 
 ## 错误处理
 
-- 如果依赖未安装，先运行：`pip3 install -r requirements.txt`
-- 单集失败时记录错误并继续下一集，不要中止整个批次
-- YouTube 限流 (HTTP 429)：等 30 秒重试一次，失败则跳过
-- Notion 推送失败：重试一次，仍失败则将分析保存到 `data/fallback/` 目录下的 markdown 文件
+主 agent：
+
+- 如果依赖未安装，分发子任务前运行：`pip3 install -r requirements.txt`
+- 单个 subagent 返回 failed 时，**不要**自动重启它——记入汇总表，让用户决定是否手动重跑（避免吞噬上下文 / 失败原因可能持续）。
+- 子任务批次中途用户中断不影响已 mark 的集（state 已落盘）。
+
+子任务（Step 3 prompt 已包含）：
+
+- YouTube 限流 (HTTP 429)：等 30 秒重试一次，失败则 mark 为已处理 + 返回 skipped。
+- Notion 推送失败：重试一次，仍失败则将分析保存到 `data/fallback/{video_id}.md`，返回 failed + note 指向该文件路径。

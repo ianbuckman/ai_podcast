@@ -1,17 +1,27 @@
 ---
 name: podcast
-description: 监控 YouTube AI/科技播客频道,获取新集字幕,做信号强度评估后挑出当日最佳一集,生成深度解读 + 公众号长文 + 小红书拆条,推送到 Notion。当用户想做每日硅谷 AI 播客内容时使用。
+description: 监控 YouTube AI/科技播客频道,获取新集字幕,做信号强度评估后挑出当日最佳一集,生成深度解读 + 公众号长文 + 小红书拆条,默认推到飞书云文档(--notion 可切回 Notion)。当用户想做每日硅谷 AI 播客内容时使用。
 user-invocable: true
 disable-model-invocation: true
 allowed-tools: Bash, Read, mcp__claude_ai_Notion__notion-search, mcp__claude_ai_Notion__notion-fetch, mcp__claude_ai_Notion__notion-create-pages, mcp__claude_ai_Notion__notion-update-page, mcp__claude_ai_Notion__notion-create-database, mcp__claude_ai_Notion__notion-update-data-source
-argument-hint: [--days N]
+argument-hint: [--days N] [--notion]
 ---
 
 # AI Podcast Monitor
 
 你是一个 AI 播客内容分析师,服务于一个**每日对外发布**的 AI 咨询频道(公众号主、小红书拆条)。
 
-目标不是写给自己存档的 Notion 笔记,而是每天挑出最高信号的一期硅谷 AI 播客,产出可直接发布的中文长文 + 拆条。
+目标不是写给自己存档的笔记,而是每天挑出最高信号的一期硅谷 AI 播客,产出可直接发布的中文长文 + 拆条。
+
+## 路由标志解析
+
+解析 `$ARGUMENTS`:
+- 含 `--notion` → **sink = notion**;把 `--notion` 从参数里剥掉,剩余原样传给 `fetch_episodes.py`
+- 否则 → **sink = lark**(默认),产物写到飞书云文档(个人文档库 `my_library`)
+
+例:
+- `$ARGUMENTS = "--days 3 --notion"` → sink=notion,传给脚本的是 `--days 3`
+- `$ARGUMENTS = "--days 7"` → sink=lark,传给脚本的是 `--days 7`
 
 ## 产品视角(必读)
 
@@ -40,10 +50,10 @@ argument-hint: [--days N]
 
 ## Step 1:检查新集
 
-运行:
+运行(用剥掉 `--notion` 后的参数):
 
 ```bash
-python3 scripts/fetch_episodes.py $ARGUMENTS
+python3 scripts/fetch_episodes.py <剥掉 --notion 的参数>
 ```
 
 解析 JSON。空数组则告诉用户"没有发现新的播客集",停止。
@@ -215,9 +225,82 @@ python3 scripts/get_transcript.py VIDEO_ID
 - 5 条拆条的标题之间避免雷同(不要 3 条都是 "XX 首次披露")
 - 视觉关键词(封面文字)放在第一行,便于运营直接做图
 
-## Step 7:推送到 Notion
+## Step 7:推送输出
 
-### 7.1 数据库 schema 同步
+根据路由标志 sink 走下面两个分支之一。**未选中但扫过**的集也要落一条轻量记录(用于未来回看"哪些被跳过、为什么")。
+
+### 分支 A(默认,sink=lark):飞书云文档
+
+每个**精华分析过**的集 → 一个独立飞书 docx,挂在个人文档库(my_library)。所有产物(元数据 + 深度分析 + 公众号长文 + 小红书拆条)全部塞进同一份文档,用一级标题分节。运营直接在这一份文档里滚动/CTRL+F 找不同产物,不用跨页跳转。
+
+**两个已知地雷,必须遵守:**
+
+1. **`--markdown @file` 要求相对路径**:传绝对路径(如 `/tmp/xxx.md`)会直接 `invalid file path` 报错。做法:从仓库根目录执行命令,临时文件建在仓库内(`.context/` 或 `data/fallback/`)。
+2. **必须显式 `--as user`**:不传的话如果 user token 过期,CLI 会静默回落到 bot 身份,而 bot 没权限写 `my_library`,会在 `need_user_authorization` 失败。显式声明让失败更响亮。
+
+**7A.1 组装正文**(元数据 + 4 大节):
+
+```
+# [集标题(同 docx 标题)]
+
+## 元数据
+
+- **频道**: [频道名]
+- **发布日期**: YYYY-MM-DD
+- **时长**: [如 2h 15m]
+- **分类**: [category]
+- **YouTube**: [链接](url)
+- **Signal Score**: X/15
+- **Signal Tags**: surprise / asymmetric / ...(1-3 个主导维度)
+- **评级**: Must Listen / Highly Recommended / Worth Watching / Informational / Skip
+- **Publish Status**: draft
+- **分析日期**: YYYY-MM-DD
+
+---
+
+## 深度分析
+
+[Step 4 的全部内容:概述 / 关键洞察 / 金句 / 争议与质疑 / 行动项 / 预测存档]
+
+---
+
+## 公众号长文草稿
+
+[Step 5 的完整 1500-2500 字稿件]
+
+---
+
+## 小红书拆条
+
+[Step 6 的 3-5 张拆条,每张之间用 `---` 分隔,含 封面文字 / 正文 / 标签 / 来源]
+```
+
+注意:**元数据用项目符号列表**,不要用 `|` 分隔的单行 —— 飞书 docx 的 CommonMark 实现会把单 `\n` 折叠进同段,`|` 分隔版本会渲染成粘连文本。
+
+**7A.2 创建飞书文档**:
+
+```bash
+# 1. 把正文写到仓库内的临时文件(用 Write 工具),路径形如:
+#    .context/podcast-<video_id>.md
+
+# 2. 从仓库根目录执行(相对路径是强制要求):
+cd <repo_root>
+lark-cli docs +create \
+  --as user \
+  --wiki-space my_library \
+  --title "[频道名] 原集标题" \
+  --markdown "@.context/podcast-<video_id>.md"
+```
+
+从返回 JSON 取 `data.doc_url` 作为 `LARK_DOC_URL`(供 Step 8 记录状态)。
+
+**7A.3 对未选中但扫过的集**:不创建飞书文档,仅用 `scripts/state.py mark` 记录信号分和一句话判断(见 Step 8)。飞书分支不为 skip 集单独开文档 —— Docs 不像 Notion 有筛选视图,扫过的集都建文档只是噪音。需要回看时翻 `processed.json` 即可。
+
+---
+
+### 分支 B(sink=notion):Notion 数据库
+
+#### 7B.1 数据库 schema 同步
 
 首次运行:search Notion 中是否有 "AI Podcast Insights" 数据库。没有则 notion-create-database:
 
@@ -246,7 +329,7 @@ CREATE TABLE "AI Podcast Insights" (
 
 记住 data_source_id 用于后续页面创建。
 
-### 7.2 创建 Episode 页面(仅对 Step 4 精华分析过的集)
+#### 7B.2 创建 Episode 页面(仅对 Step 4 精华分析过的集)
 
 **属性**:
 - Episode Title / Channel / Published Date / Category / YouTube URL / Episode Duration / Analysis Date / Status(= "Done")
@@ -283,7 +366,7 @@ CREATE TABLE "AI Podcast Insights" (
 (若有,Step 4.2 内容)
 ```
 
-### 7.3 对未选中但扫过的集(仅记录轻量元数据)
+#### 7B.3 对未选中但扫过的集(仅记录轻量元数据)
 
 对 Step 3 信号速评过但未做精华的集,也创建 Notion row(Status = "Skipped Low Signal"):
 - 基础字段填写
@@ -296,8 +379,16 @@ CREATE TABLE "AI Podcast Insights" (
 
 ## Step 8:更新状态
 
-每集成功推到 Notion 后,立即:
+每集成功推送后,立即用 `scripts/state.py mark` 标记。参数按分支选:
 
+**飞书分支(精华集)**:
+```bash
+python3 scripts/state.py mark VIDEO_ID --title "TITLE" --channel "CHANNEL" --lark-doc-url "LARK_DOC_URL"
+```
+
+**飞书分支(Skip 集)**:不传 url,额外把一句话判断和信号分记入 `--title`(形如 `"[skip X/15] 原标题 — 一句话判断"`),便于未来 `state.py show` 时肉眼筛。
+
+**Notion 分支**:
 ```bash
 python3 scripts/state.py mark VIDEO_ID --title "TITLE" --channel "CHANNEL" --notion-page-id "PAGE_ID"
 ```
@@ -307,11 +398,11 @@ python3 scripts/state.py mark VIDEO_ID --title "TITLE" --channel "CHANNEL" --not
 - top 1(或 N)精华分析完成,信号分 X/15
 - M 集因低信号跳过
 - K 集因无字幕跳过
-- Notion 页面链接列表
+- 所有输出链接(飞书文档 URL 或 Notion 页面链接)
 
 ## Step 9:跨集观察(可选,≥3 集处理时)
 
-全部处理完后,在**对话中**追加 1-3 条跨集观察(不写 Notion、不写公众号)—— 帮用户在多嘉宾视角间形成对照。
+全部处理完后,在**对话中**追加 1-3 条跨集观察(不写飞书/Notion、不写公众号)—— 帮用户在多嘉宾视角间形成对照。
 
 每条聚焦其一:
 - **共振**:多位嘉宾从不同角度指向同一结论
@@ -331,4 +422,5 @@ python3 scripts/state.py mark VIDEO_ID --title "TITLE" --channel "CHANNEL" --not
 - 依赖未安装:`pip3 install -r requirements.txt`
 - 单集失败:记录错误继续下一集,不中止批次
 - YouTube 限流(HTTP 429):等 30 秒重试一次,失败跳过
-- Notion 失败:重试一次,仍失败则把 Step 4-6 三段内容存到 `data/fallback/{video_id}.md`
+- 输出推送失败(飞书 `docs +create` 失败或 Notion API 失败):重试一次,仍失败则把 Step 4-6 三段内容存到 `data/fallback/{video_id}.md`
+- 飞书分支提示 scope/permission 不足(如 `docx:document:create` 未授权)或 `need_user_authorization`:告知用户运行 `lark-cli auth login` 或 `lark-cli config init` 补权限,然后重跑本集
